@@ -1,0 +1,11 @@
+node_modules/
+dist/
+*.tgz
+*.har
+*.local.json
+reports/
+coverage/
+.env
+.env.*
+!.env.example
+.DS_Store

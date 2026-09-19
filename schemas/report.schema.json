@@ -1,0 +1,305 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Lickgrass/upload-doctor/raw/main/schemas/report.schema.json",
+  "title": "Upload Doctor report v1",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "schemaVersion": {
+      "const": 1
+    },
+    "toolVersion": {
+      "type": "string",
+      "pattern": "^\\d+\\.\\d+\\.\\d+(?:-[a-zA-Z0-9.-]+)?$"
+    },
+    "source": {
+      "enum": ["har", "browser"]
+    },
+    "capturedAt": {
+      "type": "string",
+      "format": "date-time",
+      "maxLength": 40
+    },
+    "visibility": {
+      "enum": ["local", "share"]
+    },
+    "profiles": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "requestId": {
+            "type": "string",
+            "pattern": "^upload-[1-9][0-9]{0,3}$"
+          },
+          "requestStartedAt": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time",
+                "maxLength": 40
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "origin": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 16384
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "endpoint": {
+            "type": "string",
+            "maxLength": 16384
+          },
+          "destination": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._-]{0,254}$"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "provider": {
+            "enum": ["s3", "r2", "unknown"]
+          },
+          "method": {
+            "type": "string",
+            "pattern": "^[A-Z]{1,16}$"
+          },
+          "contractId": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^[a-zA-Z0-9_-]{1,64}$"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "contractDigest": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^[a-f0-9]{64}$"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "applicationAssertion": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^[a-zA-Z0-9_-]{1,64}$"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "requestId",
+          "requestStartedAt",
+          "origin",
+          "endpoint",
+          "destination",
+          "provider",
+          "method",
+          "contractId",
+          "contractDigest",
+          "applicationAssertion"
+        ]
+      },
+      "maxItems": 1000
+    },
+    "uploads": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "requestId": {
+            "type": "string",
+            "pattern": "^upload-[1-9][0-9]{0,3}$"
+          },
+          "storageAccepted": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "browserCompleted": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "applicationSuccess": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "supported": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "requestId",
+          "storageAccepted",
+          "browserCompleted",
+          "applicationSuccess",
+          "supported"
+        ]
+      },
+      "maxItems": 1000
+    },
+    "findings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "ruleId": {
+            "enum": [
+              "upload-scope",
+              "contract-method",
+              "contract-content-type",
+              "contract-body",
+              "signed-headers",
+              "url-expiry",
+              "credential-expiry",
+              "provider-rejection",
+              "cors-preflight",
+              "cors-origin",
+              "cors-method",
+              "cors-headers",
+              "response-header-access",
+              "region-redirect",
+              "r2-endpoint",
+              "body-integrity",
+              "browser-outcome"
+            ]
+          },
+          "requestId": {
+            "type": "string",
+            "pattern": "^upload-[1-9][0-9]{0,3}$"
+          },
+          "status": {
+            "enum": ["pass", "fail", "unknown", "unsupported"]
+          },
+          "confidence": {
+            "enum": ["confirmed", "likely", "unknown"]
+          },
+          "title": {
+            "type": "string",
+            "maxLength": 4096
+          },
+          "evidence": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "maxLength": 2048
+            },
+            "maxItems": 32
+          },
+          "explanation": {
+            "type": "string",
+            "maxLength": 4096
+          },
+          "recommendation": {
+            "type": "string",
+            "maxLength": 4096
+          },
+          "verification": {
+            "type": "string",
+            "maxLength": 4096
+          },
+          "source": {
+            "type": "string",
+            "maxLength": 4096
+          }
+        },
+        "required": [
+          "ruleId",
+          "requestId",
+          "status",
+          "confidence",
+          "title",
+          "evidence",
+          "explanation",
+          "recommendation",
+          "verification",
+          "source"
+        ]
+      },
+      "maxItems": 20000
+    },
+    "coverage": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "uploadsObserved": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1000
+        },
+        "supportedUploads": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1000
+        },
+        "truncated": {
+          "type": "boolean"
+        },
+        "limitations": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "maxLength": 1024
+          },
+          "maxItems": 64
+        }
+      },
+      "required": ["uploadsObserved", "supportedUploads", "truncated", "limitations"]
+    }
+  },
+  "required": [
+    "schemaVersion",
+    "toolVersion",
+    "source",
+    "capturedAt",
+    "visibility",
+    "profiles",
+    "uploads",
+    "findings",
+    "coverage"
+  ]
+}

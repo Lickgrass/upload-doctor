@@ -1,0 +1,69 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Upload Doctor comparison v1",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "schemaVersion": {
+      "const": 1
+    },
+    "status": {
+      "enum": ["verified", "improved", "not-fixed", "unknown"]
+    },
+    "reason": {
+      "type": "string",
+      "maxLength": 4096
+    },
+    "resolvedRules": {
+      "type": "array",
+      "items": {
+        "enum": [
+          "upload-scope",
+          "contract-method",
+          "contract-content-type",
+          "contract-body",
+          "signed-headers",
+          "url-expiry",
+          "credential-expiry",
+          "provider-rejection",
+          "cors-preflight",
+          "cors-origin",
+          "cors-method",
+          "cors-headers",
+          "response-header-access",
+          "region-redirect",
+          "r2-endpoint",
+          "body-integrity",
+          "browser-outcome"
+        ]
+      },
+      "maxItems": 32
+    },
+    "remainingRules": {
+      "type": "array",
+      "items": {
+        "enum": [
+          "upload-scope",
+          "contract-method",
+          "contract-content-type",
+          "contract-body",
+          "signed-headers",
+          "url-expiry",
+          "credential-expiry",
+          "provider-rejection",
+          "cors-preflight",
+          "cors-origin",
+          "cors-method",
+          "cors-headers",
+          "response-header-access",
+          "region-redirect",
+          "r2-endpoint",
+          "body-integrity",
+          "browser-outcome"
+        ]
+      },
+      "maxItems": 32
+    }
+  },
+  "required": ["schemaVersion", "status", "reason", "resolvedRules", "remainingRules"]
+}

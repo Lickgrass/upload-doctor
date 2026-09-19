@@ -1,0 +1,89 @@
+{
+  "name": "@lickgrass/upload-doctor",
+  "version": "0.1.0",
+  "description": "Diagnose your application's S3 and R2 browser uploads from local evidence, then verify the repair.",
+  "type": "module",
+  "license": "MIT",
+  "author": "Lickgrass (https://lickgrass.com)",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Lickgrass/upload-doctor.git"
+  },
+  "homepage": "https://github.com/Lickgrass/upload-doctor#readme",
+  "bugs": "https://github.com/Lickgrass/upload-doctor/issues",
+  "engines": {
+    "node": ">=22.14.0"
+  },
+  "bin": {
+    "upload-doctor": "./dist/cli.js"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./browser": {
+      "types": "./dist/browser.d.ts",
+      "import": "./dist/browser.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist",
+    "schemas",
+    "README.md",
+    "LICENSE",
+    "SECURITY.md",
+    "CHANGELOG.md",
+    "docs",
+    "examples"
+  ],
+  "sideEffects": false,
+  "keywords": [
+    "s3",
+    "r2",
+    "cors",
+    "uploads",
+    "presigned-url",
+    "debugging",
+    "har",
+    "playwright",
+    "cli"
+  ],
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "npm run build && node --test tests/*.test.mjs",
+    "test:browser": "npm run build && node --test tests/browser/*.test.mjs",
+    "check:package": "node scripts/check-package.mjs",
+    "check": "npm run format:check && npm run typecheck && npm test && npm run test:browser && npm run check:package",
+    "prepack": "npm run build",
+    "prepublishOnly": "npm run check",
+    "demo": "npm run build && node examples/local-demo.mjs",
+    "test:live": "npm run build && node scripts/live-smoke.mjs",
+    "format:check": "prettier --check .",
+    "format": "prettier --write ."
+  },
+  "peerDependencies": {
+    "playwright": "^1.63.0"
+  },
+  "peerDependenciesMeta": {
+    "playwright": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@aws-sdk/client-s3": "3.1136.0",
+    "@aws-sdk/s3-request-presigner": "3.1136.0",
+    "@types/node": "^22.0.0",
+    "ajv": "8.20.0",
+    "playwright": "1.63.0",
+    "prettier": "3.9.8",
+    "typescript": "7.0.2"
+  }
+}

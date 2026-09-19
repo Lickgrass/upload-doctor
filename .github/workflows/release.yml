@@ -1,0 +1,107 @@
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: Reviewed stable release tag (vX.Y.Z)
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: npm-release
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    name: Validate release candidate
+    if: github.repository == 'Lickgrass/upload-doctor' && vars.ENABLE_NPM_PUBLISH == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    outputs:
+      commit: ${{ steps.candidate.outputs.commit }}
+    steps:
+      - name: Validate tag input
+        env:
+          RELEASE_TAG: ${{ inputs.release_tag }}
+        run: |
+          if [[ ! "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo 'Expected a stable release tag of the form vX.Y.Z.' >&2
+            exit 1
+          fi
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: refs/tags/${{ inputs.release_tag }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '24'
+          package-manager-cache: false
+      - name: Check reviewed commit and package version
+        id: candidate
+        env:
+          RELEASE_TAG: ${{ inputs.release_tag }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          git merge-base --is-ancestor HEAD "refs/remotes/origin/$DEFAULT_BRANCH"
+          node --input-type=module <<'NODE'
+          import { readFileSync } from 'node:fs';
+          const pkg = JSON.parse(readFileSync('package.json', 'utf8'));
+          if (pkg.name !== '@lickgrass/upload-doctor' || `v${pkg.version}` !== process.env.RELEASE_TAG) {
+            throw new Error('The release tag does not match the expected package and version.');
+          }
+          NODE
+          echo "commit=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+      - run: npm ci --ignore-scripts
+      - run: npx --no-install playwright install --with-deps chromium
+      - run: npm run check
+      - run: npm audit --package-lock-only --audit-level=low
+
+  publish:
+    name: Publish reviewed package with provenance
+    needs: validate
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: npm
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.validate.outputs.commit }}
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '24'
+          registry-url: https://registry.npmjs.org
+          package-manager-cache: false
+      - name: Check OIDC-capable npm
+        run: |
+          node --input-type=module <<'NODE'
+          import { execFileSync } from 'node:child_process';
+          const version = execFileSync('npm', ['--version'], { encoding: 'utf8' }).trim();
+          const [major, minor, patch] = version.split('.').map(Number);
+          if (!(major > 11 || (major === 11 && (minor > 5 || (minor === 5 && patch >= 1))))) {
+            throw new Error('npm 11.5.1 or newer is required for trusted publishing.');
+          }
+          NODE
+      - run: npm ci --ignore-scripts
+      - run: npm run build
+      - run: npm run check:package
+      - name: Pack and publish
+        run: |
+          npm pack --ignore-scripts --json > "$RUNNER_TEMP/upload-doctor-pack.json"
+          node --input-type=module <<'NODE'
+          import { readFileSync } from 'node:fs';
+          import { execFileSync } from 'node:child_process';
+          const packed = JSON.parse(readFileSync(`${process.env.RUNNER_TEMP}/upload-doctor-pack.json`, 'utf8'));
+          if (packed.length !== 1 || !/^lickgrass-upload-doctor-[0-9]+\.[0-9]+\.[0-9]+\.tgz$/.test(packed[0].filename)) {
+            throw new Error('Unexpected package archive.');
+          }
+          execFileSync('npm', ['publish', packed[0].filename, '--access', 'public', '--provenance', '--ignore-scripts'], { stdio: 'inherit' });
+          NODE

@@ -1,0 +1,26 @@
+name: Diagnostic request
+description: Propose a supported failure case with primary sources and synthetic evidence.
+title: '[Diagnostic]: '
+body:
+  - type: markdown
+    attributes:
+      value: Do not attach raw HARs, signed URLs, tokens, private endpoints or customer data.
+  - type: textarea
+    id: problem
+    attributes:
+      label: Observed failure and useful outcome
+      description: Explain which upload stage fails and what evidence the tool could use.
+    validations:
+      required: true
+  - type: textarea
+    id: sources
+    attributes:
+      label: Primary sources and synthetic example
+      description: Link provider documentation or standards; use only invented request data.
+    validations:
+      required: true
+  - type: textarea
+    id: limits
+    attributes:
+      label: When should the tool remain uncertain?
+      description: Identify missing evidence or a similar case with a different cause.
