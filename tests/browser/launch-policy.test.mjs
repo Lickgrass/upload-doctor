@@ -158,27 +158,51 @@ test('startup abort closes real Chromium and interrupts a hanging page navigatio
   const abort = new AbortController();
   const originalLaunch = chromium.launch;
   let browser;
+  let starting;
+  let readinessTimer;
   chromium.launch = async function (options) {
     browser = await originalLaunch.call(this, options);
     return browser;
   };
   try {
-    const starting = startCapture({
+    starting = startCapture({
       url: `${app.url}/CANARY_PRIVATE_URL`,
       headless: true,
       signal: abort.signal,
     });
-    const rejected = assert.rejects(starting, {
+    // A rejected sandboxed launch must fail this test and release its HTTP
+    // fixture, rather than wait forever for a request that cannot arrive.
+    await Promise.race([
+      arrived.promise,
+      starting.then(
+        () => {
+          throw new Error('Capture unexpectedly completed before the navigation fixture.');
+        },
+        (error) => {
+          throw error;
+        },
+      ),
+      new Promise((_, reject) => {
+        readinessTimer = setTimeout(
+          () => reject(new Error('The navigation fixture was not reached before its deadline.')),
+          10_000,
+        );
+      }),
+    ]);
+    clearTimeout(readinessTimer);
+    const startedAbort = Date.now();
+    abort.abort();
+    await assert.rejects(starting, {
       name: 'InputError',
       message: 'Capture was interrupted before observation started.',
     });
-    await arrived.promise;
-    const startedAbort = Date.now();
-    abort.abort();
-    await rejected;
     assert.equal(browser.isConnected(), false);
     assert.ok(Date.now() - startedAbort < 5_000, 'abort must interrupt the 30-second navigation');
   } finally {
+    clearTimeout(readinessTimer);
+    abort.abort();
+    const session = await starting?.catch(() => undefined);
+    await session?.close();
     chromium.launch = originalLaunch;
     await browser?.close();
     await app.close();
