@@ -1,6 +1,23 @@
 import type { Browser, CDPSession, Page } from 'playwright';
 import { normalizeHar, providerForHost, PROVIDER_CODES } from './normalize.js';
+import { InputError } from './validation.js';
 import type { CaptureEvidence, Contract } from './types.js';
+
+const DIAGNOSTIC_ENV = ['DEBUG', 'NODE_DEBUG', 'PWDEBUG'] as const;
+function diagnosticEnvironmentEnabled(): boolean {
+  return DIAGNOSTIC_ENV.some((name) => Boolean(process.env[name]));
+}
+// Logging libraries can cache their configuration at import time. Once observed,
+// removing the environment variable is not evidence that those loggers stopped.
+let unsafeDiagnosticEnvironment = diagnosticEnvironmentEnabled();
+function requirePrivateCaptureEnvironment(): void {
+  unsafeDiagnosticEnvironment ||= diagnosticEnvironmentEnabled();
+  if (unsafeDiagnosticEnvironment) {
+    throw new InputError(
+      'Browser capture requires DEBUG, NODE_DEBUG and PWDEBUG to be disabled. Start a fresh process with these variables unset before importing Playwright or Upload Doctor.',
+    );
+  }
+}
 
 const MAX_URL = 16_384;
 const MAX_BODY = 16_384;
@@ -163,11 +180,14 @@ function providerCode(body: string): string | null {
 /**
  * Observe an existing Chromium page without intercepting, replaying or modifying requests.
  * Attach before the app action. No cloud credentials, raw HAR files or browser traces are written.
+ * Caller-owned logging/tracing is outside this collector's control. Disable it before importing
+ * Playwright and keep it disabled; this API cannot detect loggers enabled before its import.
  */
 export async function attachCapture(
   page: Page,
   options: CaptureOptions = {},
 ): Promise<CaptureCollector> {
+  requirePrivateCaptureEnvironment();
   const maxRequests = boundedInteger(options.maxRequests, 100, 1_000, 'maxRequests');
   const timeoutMs = boundedInteger(options.timeoutMs, 300_000, 3_600_000, 'timeoutMs');
   const contract = options.contract ? structuredClone(options.contract) : undefined;
@@ -597,6 +617,8 @@ export async function attachCapture(
 
 /** Opens a fresh isolated browser; the user performs the application upload themselves. */
 export async function startCapture(options: StartCaptureOptions): Promise<CaptureSession> {
+  // Check before importing Playwright, launching Chromium or visiting the target URL.
+  requirePrivateCaptureEnvironment();
   let target: URL;
   try {
     target = new URL(options.url);

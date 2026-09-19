@@ -45,7 +45,9 @@ repository variable `ENABLE_NPM_PUBLISH` is exactly `true`. Leave that variable
 unset until initial validation and publishing configuration are complete.
 Pushing a branch or tag does not publish. The workflow only runs when explicitly
 dispatched for a stable `vX.Y.Z` release tag, checks tag/version alignment and
-reruns validation before publication.
+reruns validation before publication. The workflow dispatch ref must be that same
+tag. Both validation and publication require the checked-out source to match the
+workflow's `GITHUB_SHA`, so npm provenance identifies the source actually built.
 
 ## npm trusted publisher
 
@@ -85,8 +87,17 @@ do not publish a package.
 ## Dispatch and recovery
 
 After all gates pass, an authorized maintainer creates the version tag on the
-reviewed default-branch commit and manually dispatches **Release** with that
-tag. Approve the `npm` environment only after checking the exact commit and
+reviewed default-branch commit and manually dispatches **Release** from that
+same tag, passing it as `release_tag`. For example, after creating and reviewing
+`v0.1.0`, dispatch with:
+
+```sh
+gh workflow run release.yml --ref v0.1.0 -f release_tag=v0.1.0
+```
+
+Selecting the default branch or a different tag as the workflow ref is rejected.
+Do not override GitHub's source identity environment variables to bypass this
+check. Approve the `npm` environment only after checking the exact commit and
 validation results. No workflow is authorized merely by having been added to
 the repository.
 
