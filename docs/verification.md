@@ -44,10 +44,11 @@ not an enterprise certification, service-level commitment, or security guarantee
 ## Security audit follow-up
 
 The [internal adversarial security review](security-audit.md) reproduced and
-repaired five findings in hostname parsing, browser debug logging, imported-report
-validation, terminal formatting and release source identity. Three agents reviewed
+repaired six findings in hostname parsing, browser debug logging, imported-report
+validation, terminal formatting, release source identity and live-test endpoint
+validation. Three agents reviewed
 separate surfaces and cross-reviewed the fixes. The maintained suite now has
-70 offline/configuration/security groups and 15 actual Chromium tests; all passed
+72 offline/configuration/security groups and 15 actual Chromium tests; all passed
 on Node 24.21.0 locally, along with type checking, formatting and isolated package
 installation. Additional audit-only evidence includes 6,000 seeded parser mutations,
 11 hostile browser scenarios and 19 live-harness configuration rejection cases.

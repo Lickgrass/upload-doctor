@@ -2,6 +2,21 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { createServer } from 'node:http';
 
+function isS3ServiceHost(host) {
+  if (host.length > 253) return false;
+  const suffix = host.endsWith('.amazonaws.com.cn')
+    ? '.amazonaws.com.cn'
+    : host.endsWith('.amazonaws.com')
+      ? '.amazonaws.com'
+      : null;
+  if (suffix === null) return false;
+  const labels = host.slice(0, -suffix.length).split('.');
+  if (labels.some((label) => !label || /[^a-z0-9-]/.test(label))) return false;
+  const service = labels[0];
+  // Live tests accept service endpoints only, never a virtual-hosted bucket.
+  return service === 's3' || (service.startsWith('s3-') && service.length > 3);
+}
+
 // This development-only test is intentionally separate from the offline diagnostic package.
 // Check the opt-in and explicit credentials before importing provider SDKs or opening a socket.
 function configuration() {
@@ -45,6 +60,7 @@ function configuration() {
     return null;
   let endpoint;
   if (endpointText !== undefined) {
+    if (endpointText.length > 2048) return null;
     try {
       endpoint = new URL(endpointText);
     } catch {
@@ -63,7 +79,7 @@ function configuration() {
     const allowed =
       provider === 'r2'
         ? /^[a-f0-9]{32}(?:\.(?:eu|fedramp))?\.r2\.cloudflarestorage\.com$/.test(endpoint.hostname)
-        : /^s3(?:[.-][a-z0-9-]+)*\.amazonaws\.com(?:\.cn)?$/.test(endpoint.hostname);
+        : isS3ServiceHost(endpoint.hostname);
     if (!allowed) return null;
   }
   if (provider === 'r2' && endpoint === undefined) return null;

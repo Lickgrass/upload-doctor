@@ -21,6 +21,7 @@ cloud account. No npm release had been published during the review.
 | UD-003 | Low      | Imported report fields such as `source`, `provider` and finding status accepted JSON arrays through string coercion and could be re-exported with invalid enum types.                                                                                                              | Require primitive strings for every affected enum; reject malformed types in validation and sharing. No secret exposure or false verified comparison was demonstrated from this issue.                                                                                                    |
 | UD-004 | Low      | A library consumer formatting a validated, edited report could emit terminal control sequences from narrative fields. The CLI's generated narratives did not expose this path.                                                                                                     | Escape control and directional-formatting characters per rendered line. Test OSC, CSI, carriage returns and bidi controls. This is terminal formatting, not HTML sanitization.                                                                                                            |
 | UD-005 | Medium   | The release workflow could build an input tag different from its dispatch tag while npm provenance identified the dispatch commit. This required authorized maintainer dispatch and was latent while publishing was disabled.                                                      | Require dispatch tag, input tag and source commit to agree before validation, then recheck checkout identity before publishing. Execute the actual workflow guards against matching and mismatching local fixtures.                                                                       |
+| UD-006 | Low      | The development-only live-provider harness used a second ambiguous hostname expression. A crafted endpoint in explicit local configuration exceeded a two-second deadline before opening a socket.                                                                                 | Use bounded service-host parsing and reject oversized endpoint input. Exercise hostile configuration with a deadline and valid endpoint controls without running cloud operations.                                                                                                        |
 
 ## What was exercised
 
@@ -49,6 +50,13 @@ cloud account. No npm release had been published during the review.
 - Workflow analysis and live read-only inspection of repository protections,
   Actions permissions, publishing environment, release tags and secret-scanning
   settings. Workflow command-injection and privilege boundaries were reviewed.
+- Local Semgrep OSS 1.177.0 with 213 JavaScript/TypeScript and GitHub Actions
+  rules from the official rule repository, pinned at
+  `40b8c63f75dc7c22c8a77482d73bfb864b146f7e`. It scanned 14 implementation and
+  workflow files with telemetry disabled. Six raw matches were investigated:
+  UD-006 was reproduced and repaired; the remaining five were false positives
+  checked against bounded inputs and actual code paths. Zizmor additionally
+  checked workflow security and returned no findings after the fixes.
 
 The mutation tests and browser attacks ran locally with synthetic data. They
 were bounded fuzzing and attack simulations, not self-propagating worms. Source
@@ -103,7 +111,8 @@ for the policy semantics. The settings were read back after the change.
   verification, exhaustive fuzzing, a third-party penetration test or coverage
   of a deployment that was not examined.
 
-The maintained regressions are in `tests/security-*.test.mjs`. Run `npm run check`
+The maintained regressions are in `tests/security-*.test.mjs` and
+`tests/live-config.test.mjs`. Run `npm run check`
 and the advisory check before releasing. See [verification](verification.md)
 for the final local and hosted test evidence, and [release](release.md) for the
 publishing procedure.
