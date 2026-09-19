@@ -62,6 +62,16 @@ less isolation. Only in a trusted isolated environment, use
 explicit exception. `attachCapture` cannot retrofit a sandbox into a browser
 that is already running: callers must launch it with `chromiumSandbox: true`.
 
+Some Linux systems restrict the user namespaces Chromium needs. An administrator
+must configure suitable sandbox support; see Chromium's
+[AppArmor guidance](https://chromium.googlesource.com/chromium/src/+/main/docs/security/apparmor-userns-restrictions.md).
+The CLI never changes host security policy. Our disposable Ubuntu CI runners
+use a narrowly scoped, temporary AppArmor profile for the exact installed browser
+executables. This permits those binaries to create user namespaces while keeping
+the system-wide restriction enabled. Anyone able to replace an allowed binary
+could inherit that permission, so this CI setup is not a general workstation
+installation procedure.
+
 Playwright's automation browser differs from a normal browsing profile. The
 locked version supplies flags including `--password-store=basic`,
 `--use-mock-keychain`, and disabled `HttpsUpgrades`. Do not save passwords or use

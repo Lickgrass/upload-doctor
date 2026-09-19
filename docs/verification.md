@@ -65,7 +65,7 @@ arguments, child-process signals, output-pipe closure and exact archive contents
 are checked directly. CI also rehearses artifact upload/download between two jobs
 without publishing permission. Windows graceful signal delivery and live cloud
 behavior remain separate from the POSIX browser checks.
-The follow-up suite has 79 offline/configuration/security groups and 28 browser
+The follow-up suite has 83 offline/configuration/security groups and 28 browser
 groups. On Node 24.21.0, all pass together with formatting, type checking and exact
 35-file package verification. A repeated 25-run startup-interruption check also
 passes after the bounded DevTools-detachment repair. Consult the follow-up PR for

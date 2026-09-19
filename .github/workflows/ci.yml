@@ -56,7 +56,12 @@ jobs:
           cache: npm
       - run: npm ci --ignore-scripts
       - run: npx --no-install playwright install --with-deps chromium
+      - name: Permit sandbox namespaces for the installed Chromium binaries
+        run: node scripts/ci-chromium-sandbox.mjs setup
       - run: npm run test:browser
+      - name: Remove the temporary Chromium AppArmor profiles
+        if: always()
+        run: node scripts/ci-chromium-sandbox.mjs cleanup
       # Only synthetic local fixtures. No cloud tokens or capture artifacts.
 
   audit:

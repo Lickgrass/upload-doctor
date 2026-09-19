@@ -232,7 +232,10 @@ test('publication guard verifies the exact archive bytes without executing packa
 
 test('OIDC publication job does not check out or execute project code', () => {
   const publish = workflow.slice(workflow.indexOf('\n  publish:\n'));
-  assert.doesNotMatch(publish, /actions\/checkout|npm (?:ci|install|run|pack)|npx|check-package/);
+  assert.doesNotMatch(
+    publish,
+    /actions\/checkout|npm (?:ci|install|run|pack)|npx|check-package|ci-chromium-sandbox|node scripts\//,
+  );
   assert.match(publish, /artifact-ids: \$\{\{ needs\.validate\.outputs\.artifact-id \}\}/);
   assert.match(publish, /digest-mismatch: error/);
   assert.doesNotMatch(publish, /github-token:|repository:|run-id:/);
@@ -249,4 +252,32 @@ test('OIDC publication job does not check out or execute project code', () => {
   );
   assert.match(workflow, /overwrite: false/);
   assert.doesNotMatch(workflow.slice(0, workflow.indexOf('\n  publish:\n')), /id-token: write/);
+});
+
+test('hosted sandbox setup has unconditional cleanup only in browser validation jobs', () => {
+  const ci = readFileSync(new URL('../.github/workflows/ci.yml', import.meta.url), 'utf8');
+  function job(text, name) {
+    const start = text.indexOf(`\n  ${name}:\n`);
+    assert.notEqual(start, -1);
+    const body = text.slice(start + 1);
+    const next = body.slice(1).search(/\n  [a-zA-Z0-9_]+:\n/);
+    return next < 0 ? body : body.slice(0, next + 1);
+  }
+  for (const [body, command] of [
+    [job(ci, 'browser'), 'npm run test:browser'],
+    [job(workflow, 'validate'), 'npm run check'],
+  ]) {
+    const installation = body.indexOf('playwright install --with-deps chromium');
+    const setup = body.indexOf('node scripts/ci-chromium-sandbox.mjs setup');
+    const tests = body.indexOf(`run: ${command}\n`);
+    const cleanup = body.indexOf('node scripts/ci-chromium-sandbox.mjs cleanup');
+    assert.ok(installation >= 0 && installation < setup && setup < tests && tests < cleanup);
+    const cleanupStep = body.slice(body.lastIndexOf('      - name:', cleanup), cleanup);
+    assert.match(cleanupStep, /\n        if: always\(\)\n/);
+    assert.doesNotMatch(body, /id-token: write|--no-sandbox|sysctl/);
+  }
+  assert.doesNotMatch(job(workflow, 'publish'), /ci-chromium-sandbox|apparmor|sudo/);
+  for (const name of ['offline', 'audit', 'artifact_build', 'artifact_verify']) {
+    assert.doesNotMatch(job(ci, name), /ci-chromium-sandbox|apparmor|sudo/);
+  }
 });

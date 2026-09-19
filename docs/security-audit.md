@@ -166,3 +166,17 @@ creation policy remain the disclosed governance limits. They were not silently
 changed or represented as independent human review. Actions SHA pinning remains
 required; the allowlist now also includes the pinned upload/download artifact
 actions. Live cloud behavior and real npm trusted publishing remain untested.
+
+Hosted Linux testing exposed a further infrastructure prerequisite: the Ubuntu
+runner rejected Chromium with `No usable sandbox!`. A readiness wait in the new
+test harness also hung after launch rejection; that wait now races launch failure
+and a bounded deadline, then cleans up. A forced launch-failure reproduction
+verifies that the test exits instead of waiting indefinitely.
+
+CI and release validation configure a temporary AppArmor exception for the exact
+installed Chromium executables, following Chromium's
+[documented per-binary approach](https://chromium.googlesource.com/chromium/src/+/main/docs/security/apparmor-userns-restrictions.md).
+This configuration runs only on the disposable, non-root GitHub Linux runner;
+the general user-namespace restriction and Chromium sandbox stay enabled.
+Cleanup removes the added profile. These runner configuration steps have no npm
+publishing permission and are not shipped in the package or run by the CLI.

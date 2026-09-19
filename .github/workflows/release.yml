@@ -72,7 +72,12 @@ jobs:
           echo "commit=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
       - run: npm ci --ignore-scripts
       - run: npx --no-install playwright install --with-deps chromium
+      - name: Permit sandbox namespaces for the installed Chromium binaries
+        run: node scripts/ci-chromium-sandbox.mjs setup
       - run: npm run check
+      - name: Remove the temporary Chromium AppArmor profiles
+        if: always()
+        run: node scripts/ci-chromium-sandbox.mjs cleanup
       - run: npm audit --package-lock-only --audit-level=low
       - name: Retain the tested package
         run: node scripts/check-package.mjs --out-dir "$RUNNER_TEMP/upload-doctor-release"

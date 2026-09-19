@@ -62,6 +62,12 @@ consumer tests. The workflow records its SHA-256 and uploads only that archive
 under the fixed artifact name `upload-doctor-release`, with overwrite disabled.
 The artifact ID, filename, digest, source commit and run ID become job outputs.
 
+On the ephemeral Ubuntu runner, a CI-only helper temporarily permits user
+namespaces for the exact installed Chromium binary paths through AppArmor.
+The global user-namespace restriction stays unchanged, and an `always()` cleanup
+step removes the owned profiles after validation. Browser sandboxing stays enabled;
+this setup runs only in validation, which has no npm publishing identity.
+
 The separate `npm` environment approval gates publication. This job has OIDC
 permission, but does not check out source, install dependencies, build, pack, or
 execute application/package-checker code. Pinned official actions set up Node and
