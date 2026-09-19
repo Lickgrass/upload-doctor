@@ -33,6 +33,19 @@ them for a compliance regime.
 
 ## Browser sessions
 
+Start a fresh process with `DEBUG`, `NODE_DEBUG` and `PWDEBUG` unset before
+importing either Playwright or Upload Doctor. The browser entry points refuse
+these variables when observed, even if they are subsequently removed. Upstream
+protocol logs can expose signed URLs, authorization headers and complete file
+bodies before this tool's sanitization runs.
+
+When attaching to a caller-owned browser, disable custom Playwright loggers,
+protocol logging, tracing and HAR recording as well. A logger initialized before
+this module was imported, or enabled programmatically afterward, cannot be
+detected reliably by an environment check. This restriction also applies to
+test runners and wrappers. The collector does not sanitize another component's
+logs, crash dumps, process arguments or browser profiles.
+
 Capture uses an isolated session, not your daily browser profile. Sign in only
 to the application you intend to inspect. Prefer staging, synthetic accounts and
 small synthetic files. The application is responsible for its normal upload,

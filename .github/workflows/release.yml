@@ -28,10 +28,15 @@ jobs:
         env:
           RELEASE_TAG: ${{ inputs.release_tag }}
         run: |
-          if [[ ! "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-            echo 'Expected a stable release tag of the form vX.Y.Z.' >&2
-            exit 1
-          fi
+          node --input-type=module <<'NODE'
+          const env = process.env;
+          if (!/^v[0-9]+\.[0-9]+\.[0-9]+$/.test(env.RELEASE_TAG ?? '') ||
+              env.GITHUB_REF_TYPE !== 'tag' ||
+              env.GITHUB_REF !== `refs/tags/${env.RELEASE_TAG}` ||
+              !/^[0-9a-f]{40}$/.test(env.GITHUB_SHA ?? '')) {
+            throw new Error('Dispatch the workflow from the same stable vX.Y.Z tag as release_tag.');
+          }
+          NODE
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: refs/tags/${{ inputs.release_tag }}
@@ -50,6 +55,11 @@ jobs:
           git merge-base --is-ancestor HEAD "refs/remotes/origin/$DEFAULT_BRANCH"
           node --input-type=module <<'NODE'
           import { readFileSync } from 'node:fs';
+          import { execFileSync } from 'node:child_process';
+          const commit = execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim();
+          if (commit !== process.env.GITHUB_SHA) {
+            throw new Error('The candidate commit does not match the workflow source commit.');
+          }
           const pkg = JSON.parse(readFileSync('package.json', 'utf8'));
           if (pkg.name !== '@lickgrass/upload-doctor' || `v${pkg.version}` !== process.env.RELEASE_TAG) {
             throw new Error('The release tag does not match the expected package and version.');
@@ -69,7 +79,7 @@ jobs:
     environment: npm
     permissions:
       contents: read
-      id-token: write
+      id-token: write # npm trusted publishing and provenance use a short-lived OIDC token.
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -93,6 +103,23 @@ jobs:
       - run: npm ci --ignore-scripts
       - run: npm run build
       - run: npm run check:package
+      - name: Check publication source identity
+        env:
+          RELEASE_TAG: ${{ inputs.release_tag }}
+          CANDIDATE_COMMIT: ${{ needs.validate.outputs.commit }}
+        run: |
+          node --input-type=module <<'NODE'
+          import { execFileSync } from 'node:child_process';
+          const env = process.env;
+          const commit = execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim();
+          if (!/^v[0-9]+\.[0-9]+\.[0-9]+$/.test(env.RELEASE_TAG ?? '') ||
+              env.GITHUB_REF_TYPE !== 'tag' ||
+              env.GITHUB_REF !== `refs/tags/${env.RELEASE_TAG}` ||
+              !/^[0-9a-f]{40}$/.test(env.GITHUB_SHA ?? '') ||
+              commit !== env.GITHUB_SHA || commit !== env.CANDIDATE_COMMIT) {
+            throw new Error('Publication source must match the dispatch tag and validated commit.');
+          }
+          NODE
       - name: Pack and publish
         run: |
           npm pack --ignore-scripts --json > "$RUNNER_TEMP/upload-doctor-pack.json"

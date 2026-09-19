@@ -102,8 +102,10 @@ export function validateReport(input: unknown): Report {
   if (
     !object(input) ||
     input.schemaVersion !== 1 ||
-    !['har', 'browser'].includes(String(input.source)) ||
-    !['local', 'share'].includes(String(input.visibility)) ||
+    typeof input.source !== 'string' ||
+    !['har', 'browser'].includes(input.source) ||
+    typeof input.visibility !== 'string' ||
+    !['local', 'share'].includes(input.visibility) ||
     typeof input.toolVersion !== 'string' ||
     !/^\d+\.\d+\.\d+(?:-[a-zA-Z0-9.-]+)?$/.test(input.toolVersion) ||
     typeof input.capturedAt !== 'string' ||
@@ -133,7 +135,8 @@ export function validateReport(input: unknown): Report {
         ((input.visibility === 'share' && p.endpoint === '[redacted]') ||
           safeUrl(p.endpoint)?.origin === p.endpoint)
       ) ||
-      !['s3', 'r2', 'unknown'].includes(String(p.provider)) ||
+      typeof p.provider !== 'string' ||
+      !['s3', 'r2', 'unknown'].includes(p.provider) ||
       typeof p.method !== 'string' ||
       !/^[A-Z]{1,16}$/.test(p.method) ||
       !shortId(p.contractId) ||
@@ -188,8 +191,10 @@ export function validateReport(input: unknown): Report {
       !IDS.has(f.ruleId) ||
       !requestId(f.requestId) ||
       !identifiers.has(f.requestId) ||
-      !['fail', 'pass', 'unknown', 'unsupported'].includes(String(f.status)) ||
-      !['confirmed', 'likely', 'unknown'].includes(String(f.confidence)) ||
+      typeof f.status !== 'string' ||
+      !['fail', 'pass', 'unknown', 'unsupported'].includes(f.status) ||
+      typeof f.confidence !== 'string' ||
+      !['confirmed', 'likely', 'unknown'].includes(f.confidence) ||
       !Array.isArray(f.evidence) ||
       f.evidence.length > 32 ||
       f.evidence.some((e) => typeof e !== 'string' || e.length > 2048) ||
@@ -429,6 +434,7 @@ export function reportExitCode(report: Report, strict = false): number {
     return 3;
   return 0;
 }
+/** Escapes terminal and bidirectional controls in display lines; this is not HTML escaping. */
 export function formatReport(report: Report): string {
   const lines = [
     `Upload Doctor ${VERSION}`,
@@ -448,5 +454,12 @@ export function formatReport(report: Report): string {
       'No failure detected in available evidence. This is not proof of application success.',
     );
   lines.push('', ...report.coverage.limitations.map((v) => `Coverage: ${v}`));
-  return `${lines.join('\n')}\n`;
+  return `${lines
+    .map((line) =>
+      line.replace(
+        /[\u0000-\u001f\u007f-\u009f\u061c\u200e\u200f\u2028-\u202e\u2066-\u2069]/g,
+        (character) => `\\u${character.charCodeAt(0).toString(16).padStart(4, '0')}`,
+      ),
+    )
+    .join('\n')}\n`;
 }

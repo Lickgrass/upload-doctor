@@ -9,3 +9,7 @@
 - Standalone CLI and ESM library with TypeScript declarations.
 - Synthetic offline/browser tests, packaged-install checks and manual release
   workflow. Live-provider release validation is tracked separately.
+- Security review: bounded provider hostname parsing, browser diagnostic logging
+  guards, strict imported-report enum validation, terminal control escaping and
+  release tag/commit identity checks. See `docs/security-audit.md` for evidence
+  and scope limits.

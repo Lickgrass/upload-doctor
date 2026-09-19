@@ -20,6 +20,11 @@ promised.
   separate browser session. That page and its uploader can contact services and
   write objects as they normally would. Capture is not a sandbox for an
   untrusted application. Use a patched runtime and browser.
+- Start capture in a fresh process with `DEBUG`, `NODE_DEBUG` and `PWDEBUG`
+  unset. Capture rejects these diagnostic environments because upstream logs
+  can contain complete signed URLs, authorization headers and file bytes.
+  Callers of the browser API must also disable their own loggers and traces
+  before importing Playwright. The collector cannot control external logging.
 - The tool does not need cloud secret access keys to observe an existing
   uploader. Captures may still contain bearer URLs, authentication data,
   sensitive paths and response bodies. Treat inputs as secrets.
@@ -36,4 +41,6 @@ promised.
   tools must escape output for their display context and never execute it.
 
 See [privacy and evidence handling](docs/privacy.md) and
-[diagnostic coverage](docs/diagnostics.md).
+[diagnostic coverage](docs/diagnostics.md). The
+[September 2026 security review](docs/security-audit.md) records verified fixes,
+adversarial tests and remaining assurance limits.

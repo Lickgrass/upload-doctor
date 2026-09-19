@@ -41,6 +41,21 @@ not an enterprise certification, service-level commitment, or security guarantee
   remains gated until live-provider verification and publisher configuration are complete.
 - Independent user pilots and third-party security audit: not performed or implied.
 
+## Security audit follow-up
+
+The [internal adversarial security review](security-audit.md) reproduced and
+repaired five findings in hostname parsing, browser debug logging, imported-report
+validation, terminal formatting and release source identity. Three agents reviewed
+separate surfaces and cross-reviewed the fixes. The maintained suite now has
+70 offline/configuration/security groups and 15 actual Chromium tests; all passed
+on Node 24.21.0 locally, along with type checking, formatting and isolated package
+installation. Additional audit-only evidence includes 6,000 seeded parser mutations,
+11 hostile browser scenarios and 19 live-harness configuration rejection cases.
+
+The package remains an unpublished release candidate. These checks do not remove
+the live-provider or independent external assurance gaps above. Consult the
+security-fix pull request's hosted checks for its exact cross-platform result.
+
 ## Repository controls
 
 The public repository has secret scanning, push protection, dependency security
@@ -48,6 +63,8 @@ updates and private vulnerability reporting enabled. An `npm` deployment environ
 requires maintainer approval and permits only `v*` tags. `ENABLE_NPM_PUBLISH` remains
 unset, so pushing code cannot publish a package. npm publisher registration is still
 required before a package release.
+Repository policy additionally requires full SHA pins for actions and allows only
+the two actions currently used by the workflows.
 
 Reports are unsigned local observations. A user can edit JSON or supply false
 assertions; the comparison engine checks consistency, not provenance or authenticity.

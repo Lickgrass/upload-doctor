@@ -39,12 +39,29 @@ const VALUES = new Set([
   'x-amz-bucket-region',
 ]);
 const TOKEN = /^[a-z0-9!#$%&'*+.^_`|~-]{1,128}$/;
-const AWS = /(?:^|\.)s3(?:[.-][a-z0-9-]+)*\.amazonaws\.com(?:\.cn)?$/;
 const R2 = /(?:^|\.)[a-f0-9]{32}(?:\.(?:eu|fedramp))?\.r2\.cloudflarestorage\.com$/;
+
+function isS3Host(host: string): boolean {
+  const suffix = host.endsWith('.amazonaws.com.cn')
+    ? '.amazonaws.com.cn'
+    : host.endsWith('.amazonaws.com')
+      ? '.amazonaws.com'
+      : null;
+  if (suffix === null) return false;
+  // Parse labels once. A repeated group containing both a '-' separator and
+  // '-' in its value alphabet makes near-miss hostnames exponentially costly.
+  const labels = host.slice(0, -suffix.length).split('.');
+  for (let index = labels.length - 1; index >= 0; index--) {
+    const label = labels[index]!;
+    if (!label || /[^a-z0-9-]/.test(label)) return false;
+    if (label === 's3' || (label.startsWith('s3-') && label.length > 3)) return true;
+  }
+  return false;
+}
 
 export function providerForHost(host: string): Provider {
   if (R2.test(host)) return 'r2';
-  if (AWS.test(host)) return 's3';
+  if (isS3Host(host)) return 's3';
   return 'unknown';
 }
 function destination(url: URL, contract?: Contract): string | null {
