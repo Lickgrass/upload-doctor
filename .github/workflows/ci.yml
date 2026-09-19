@@ -56,7 +56,12 @@ jobs:
           cache: npm
       - run: npm ci --ignore-scripts
       - run: npx --no-install playwright install --with-deps chromium
+      - name: Permit sandbox namespaces for the installed Chromium binaries
+        run: node scripts/ci-chromium-sandbox.mjs setup
       - run: npm run test:browser
+      - name: Remove the temporary Chromium AppArmor profiles
+        if: always()
+        run: node scripts/ci-chromium-sandbox.mjs cleanup
       # Only synthetic local fixtures. No cloud tokens or capture artifacts.
 
   audit:
@@ -72,3 +77,103 @@ jobs:
           node-version: '24'
           package-manager-cache: false
       - run: npm audit --package-lock-only --audit-level=low
+
+  artifact_build:
+    name: Build package handoff fixture
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      artifact-id: ${{ steps.upload.outputs.artifact-id }}
+      filename: ${{ steps.archive.outputs.filename }}
+      sha256: ${{ steps.archive.outputs.sha256 }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '24'
+          package-manager-cache: false
+      - run: npm ci --ignore-scripts
+      - run: npm run build
+      - run: node scripts/check-package.mjs --out-dir "$RUNNER_TEMP/upload-doctor-ci-package"
+      - name: Record the tested handoff bytes
+        id: archive
+        run: |
+          node --input-type=module <<'NODE'
+          import { appendFileSync, lstatSync, readFileSync } from 'node:fs';
+          import { createHash } from 'node:crypto';
+          import { join } from 'node:path';
+          const directory = join(process.env.RUNNER_TEMP, 'upload-doctor-ci-package');
+          const metadata = JSON.parse(readFileSync(join(directory, 'metadata.json'), 'utf8'));
+          if (metadata.schemaVersion !== 1 || metadata.name !== '@lickgrass/upload-doctor' ||
+              typeof metadata.version !== 'string' || metadata.version.trim() !== metadata.version ||
+              !/^[0-9]+\.[0-9]+\.[0-9]+(?:-[a-zA-Z0-9.-]+)?$/.test(metadata.version ?? '') ||
+              metadata.filename !== `lickgrass-upload-doctor-${metadata.version}.tgz`) {
+            throw new Error('Unexpected package handoff metadata.');
+          }
+          const archive = join(directory, metadata.filename);
+          const stat = lstatSync(archive);
+          if (!stat.isFile() || stat.isSymbolicLink() || stat.size < 1 || stat.size > 1024 * 1024) {
+            throw new Error('Unexpected package handoff archive.');
+          }
+          const sha256 = createHash('sha256').update(readFileSync(archive)).digest('hex');
+          if (sha256 !== metadata.sha256 || stat.size !== metadata.archiveBytes) {
+            throw new Error('Package handoff differs from the tested bytes.');
+          }
+          appendFileSync(process.env.GITHUB_OUTPUT, `filename=${metadata.filename}\nsha256=${sha256}\n`);
+          NODE
+      - name: Upload only the synthetic-project package
+        id: upload
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: upload-doctor-ci-handoff-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/upload-doctor-ci-package/${{ steps.archive.outputs.filename }}
+          retention-days: 1
+          if-no-files-found: error
+          compression-level: 0
+          overwrite: false
+          include-hidden-files: false
+
+  artifact_verify:
+    name: Verify package handoff fixture
+    needs: artifact_build
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions: {}
+    steps:
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '24'
+          package-manager-cache: false
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          artifact-ids: ${{ needs.artifact_build.outputs.artifact-id }}
+          path: ${{ runner.temp }}/upload-doctor-ci-download
+          digest-mismatch: error
+      - name: Verify the clean-job filename and digest
+        env:
+          ARCHIVE_NAME: ${{ needs.artifact_build.outputs.filename }}
+          ARCHIVE_SHA256: ${{ needs.artifact_build.outputs.sha256 }}
+        run: |
+          node --input-type=module <<'NODE'
+          import { lstatSync, readFileSync, readdirSync } from 'node:fs';
+          import { createHash } from 'node:crypto';
+          import { join } from 'node:path';
+          const env = process.env;
+          const directory = join(env.RUNNER_TEMP, 'upload-doctor-ci-download');
+          const files = readdirSync(directory);
+          if (!/^lickgrass-upload-doctor-[0-9]+\.[0-9]+\.[0-9]+(?:-[a-zA-Z0-9.-]+)?\.tgz$/.test(env.ARCHIVE_NAME ?? '') ||
+              !/^[0-9a-f]{64}$/.test(env.ARCHIVE_SHA256 ?? '') ||
+              files.length !== 1 || files[0] !== env.ARCHIVE_NAME) {
+            throw new Error('Unexpected downloaded archive name or layout.');
+          }
+          const archive = join(directory, env.ARCHIVE_NAME);
+          const stat = lstatSync(archive);
+          if (!stat.isFile() || stat.isSymbolicLink() || stat.size < 1 || stat.size > 1024 * 1024) {
+            throw new Error('Unexpected downloaded archive type or size.');
+          }
+          const sha256 = createHash('sha256').update(readFileSync(archive)).digest('hex');
+          if (sha256 !== env.ARCHIVE_SHA256) throw new Error('Downloaded archive SHA-256 differs.');
+          console.log('Exact tested archive crossed the job boundary with its filename and SHA-256 intact.');
+          NODE

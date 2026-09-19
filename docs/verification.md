@@ -48,7 +48,7 @@ repaired six findings in hostname parsing, browser debug logging, imported-repor
 validation, terminal formatting, release source identity and live-test endpoint
 validation. Three agents reviewed
 separate surfaces and cross-reviewed the fixes. The maintained suite now has
-72 offline/configuration/security groups and 15 actual Chromium tests; all passed
+72 offline/configuration/security groups and 15 actual Chromium tests at that revision; all passed
 on Node 24.21.0 locally, along with type checking, formatting and isolated package
 installation. Additional audit-only evidence includes 6,000 seeded parser mutations,
 11 hostile browser scenarios and 19 live-harness configuration rejection cases.
@@ -56,6 +56,20 @@ installation. Additional audit-only evidence includes 6,000 seeded parser mutati
 The package remains an unpublished release candidate. These checks do not remove
 the live-provider or independent external assurance gaps above. Consult the
 security-fix pull request's hosted checks for its exact cross-platform result.
+
+A subsequent user review identified browser sandbox and signal defaults, the
+privileged publication rebuild, a stale local tarball and incomplete package
+inventory enforcement. The [follow-up record](security-audit.md#follow-up-review-after-pr-2)
+documents those repairs and their additional regressions. Actual browser process
+arguments, child-process signals, output-pipe closure and exact archive contents
+are checked directly. CI also rehearses artifact upload/download between two jobs
+without publishing permission. Windows graceful signal delivery and live cloud
+behavior remain separate from the POSIX browser checks.
+The follow-up suite has 83 offline/configuration/security groups and 28 browser
+groups. On Node 24.21.0, all pass together with formatting, type checking and exact
+35-file package verification. A repeated 25-run startup-interruption check also
+passes after the bounded DevTools-detachment repair. Consult the follow-up PR for
+hosted platform checks and the actual cross-job artifact handoff result.
 
 ## Repository controls
 
@@ -65,7 +79,7 @@ requires maintainer approval and permits only `v*` tags. `ENABLE_NPM_PUBLISH` re
 unset, so pushing code cannot publish a package. npm publisher registration is still
 required before a package release.
 Repository policy additionally requires full SHA pins for actions and allows only
-the two actions currently used by the workflows.
+checkout, setup-node, upload-artifact and download-artifact used by the workflows.
 
 Reports are unsigned local observations. A user can edit JSON or supply false
 assertions; the comparison engine checks consistency, not provenance or authenticity.

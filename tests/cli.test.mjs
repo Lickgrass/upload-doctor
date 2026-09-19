@@ -15,6 +15,7 @@ test('help, version and unknown options expose no secret arguments', () => {
     ['--CANARY_SECRET'],
     ['inspect'],
     ['share', 'report.json', '--strict'],
+    ['inspect', 'file.har', '--insecure-no-sandbox'],
     ['capture', 'file:///CANARY_SECRET'],
     ['capture', 'https://app.example', '--duration', '0'],
   ]) {

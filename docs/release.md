@@ -25,6 +25,8 @@ The initial implementation's completed and pending checks are recorded in
 - [ ] **Live Cloudflare R2 verification:** record equivalent evidence, including
       CORS and expiration behavior when provider responses are observable.
 - [ ] Package version, immutable `vX.Y.Z` tag and reviewed commit match.
+- [ ] The exact tested package archive, its SHA-256 and immutable Actions artifact
+      ID are recorded for the release run; publication consumes those same bytes.
 - [ ] Repository and npm ownership, access, workflow permissions and publication
       settings are configured and reviewed.
 
@@ -46,8 +48,39 @@ unset until initial validation and publishing configuration are complete.
 Pushing a branch or tag does not publish. The workflow only runs when explicitly
 dispatched for a stable `vX.Y.Z` release tag, checks tag/version alignment and
 reruns validation before publication. The workflow dispatch ref must be that same
-tag. Both validation and publication require the checked-out source to match the
-workflow's `GITHUB_SHA`, so npm provenance identifies the source actually built.
+tag. Validation requires the checked-out source to match the workflow's
+`GITHUB_SHA`; publication requires the validated source identity and run ID to
+match that same workflow run.
+
+## Build and publication boundary
+
+The validation job has read-only repository access and no OIDC permission. It
+installs the locked development dependencies with lifecycle scripts disabled,
+builds and tests the project, then runs the package checker with `--out-dir`.
+That checker retains the same archive it inspected and installed for its isolated
+consumer tests. The workflow records its SHA-256 and uploads only that archive
+under the fixed artifact name `upload-doctor-release`, with overwrite disabled.
+The artifact ID, filename, digest, source commit and run ID become job outputs.
+
+On the ephemeral Ubuntu runner, a CI-only helper temporarily permits user
+namespaces for the exact installed Chromium binary paths through AppArmor.
+The global user-namespace restriction stays unchanged, and an `always()` cleanup
+step removes the owned profiles after validation. Browser sandboxing stays enabled;
+this setup runs only in validation, which has no npm publishing identity.
+
+The separate `npm` environment approval gates publication. This job has OIDC
+permission, but does not check out source, install dependencies, build, pack, or
+execute application/package-checker code. Pinned official actions set up Node and
+download the immutable artifact ID from the current run. Inline checks using only
+Node built-ins reject changed identity, extra files, nonregular files, unexpected
+names/sizes, and any archive SHA-256 mismatch. npm then publishes that exact
+archive with `--ignore-scripts` and provenance. Both the artifact action's outer
+digest and the package archive's own digest must match.
+
+This boundary keeps development tools and project code out of the job that can
+request an npm publishing identity. The reviewed workflow, GitHub runner/actions,
+Node/npm distribution, and artifact service remain trusted infrastructure. An
+archive passing its tests is not proof that its implementation is harmless.
 
 ## npm trusted publisher
 
@@ -78,11 +111,15 @@ npx --no-install playwright install chromium
 npm run check
 npm audit --package-lock-only --audit-level=low
 npm pack --dry-run --ignore-scripts
+release_work="$(mktemp -d)"
+node scripts/check-package.mjs --out-dir "$release_work/package"
 ```
 
 Review the file list and package-install smoke results. Do not include real
 captures, generated reports, browser profiles or credentials. These commands
-do not publish a package.
+do not publish a package. The output directory must be new; the retained archive
+is accompanied by private local verification metadata, which is not uploaded as
+the release artifact.
 
 ## Dispatch and recovery
 
@@ -97,8 +134,8 @@ gh workflow run release.yml --ref v0.1.0 -f release_tag=v0.1.0
 
 Selecting the default branch or a different tag as the workflow ref is rejected.
 Do not override GitHub's source identity environment variables to bypass this
-check. Approve the `npm` environment only after checking the exact commit and
-validation results. No workflow is authorized merely by having been added to
+check. Approve the `npm` environment only after checking the exact commit,
+validation results, and archive identity in that run. No workflow is authorized merely by having been added to
 the repository.
 
 If publication fails ambiguously, inspect the npm registry before retrying.
@@ -106,3 +143,8 @@ Published versions are immutable; never overwrite or reuse a version. For a
 faulty release, stop subsequent releases, assess impact, document the correction
 and publish a new version through the same checks. Follow the security policy
 for confidential issues; deprecate affected versions when appropriate.
+
+Artifacts are retained for seven days. If validation must be repeated or the
+artifact has expired, dispatch a new run against the same reviewed tag. Do not
+overwrite or substitute an existing run's archive. A publication-only retry must
+still use that run's recorded artifact ID and SHA-256.

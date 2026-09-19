@@ -30,6 +30,9 @@ exclusively, requesting mode `0600`; it refuses an existing file or symlink.
 Permissions depend on your operating system and filesystem, and do not replace
 access controls or encryption. The tool does not encrypt reports or certify
 them for a compliance regime.
+In particular, Windows does not provide the same input symlink rejection and
+POSIX mode guarantees. Use input paths you trust and a directory with restrictive
+Windows ACLs; the CLI does not create or audit those ACLs for you.
 
 ## Browser sessions
 
@@ -51,6 +54,42 @@ to the application you intend to inspect. Prefer staging, synthetic accounts and
 small synthetic files. The application is responsible for its normal upload,
 side effects and cleanup. Capture is not permission to test somebody else's
 service.
+
+Owned capture enables Chromium's sandbox explicitly. If the operating system
+cannot support it, startup fails with a fixed error rather than retrying with
+less isolation. Only in a trusted isolated environment, use
+`--insecure-no-sandbox` or the library's `insecureNoSandbox: true` option as an
+explicit exception. `attachCapture` cannot retrofit a sandbox into a browser
+that is already running: callers must launch it with `chromiumSandbox: true`.
+
+Some Linux systems restrict the user namespaces Chromium needs. An administrator
+must configure suitable sandbox support; see Chromium's
+[AppArmor guidance](https://chromium.googlesource.com/chromium/src/+/main/docs/security/apparmor-userns-restrictions.md).
+The CLI never changes host security policy. Our disposable Ubuntu CI runners
+use a narrowly scoped, temporary AppArmor profile for the exact installed browser
+executables. This permits those binaries to create user namespaces while keeping
+the system-wide restriction enabled. Anyone able to replace an allowed binary
+could inherit that permission, so this CI setup is not a general workstation
+installation procedure.
+
+Playwright's automation browser differs from a normal browsing profile. The
+locked version supplies flags including `--password-store=basic`,
+`--use-mock-keychain`, and disabled `HttpsUpgrades`. Do not save passwords or use
+this session as your everyday browser; use explicit HTTPS URLs for real
+applications. Bundled Chromium follows the installed Playwright version and
+does not inherit your system Chrome updates. Update and retest Playwright and
+its browser together. Enabling the sandbox does not restore all normal browser
+security preferences or prevent the page's authorized network activity.
+
+The CLI owns SIGINT, SIGTERM and SIGHUP while capturing. After capture has
+started, these signals finalize the report, write the requested output and
+close the browser; interruption during startup returns error code 2. The
+programmatic `startCapture` API installs no process signal handlers. Its caller
+must call `finish()` and `close()` during shutdown; an AbortSignal finalizes an
+active collector but the caller still owns browser closure.
+Finalization retains evidence already observed; an in-flight request or queued
+browser completion event can still leave its outcome unknown. Closing a stdout
+pipe does not skip cleanup or replace the diagnostic exit status.
 
 The collector observes selected storage requests and preflights. It does not
 save the signing endpoint response, arbitrary application traffic or a complete
