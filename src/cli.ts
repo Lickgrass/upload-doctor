@@ -16,6 +16,7 @@ import {
 } from './report.js';
 import { InputError, parseContract, safeUrl } from './validation.js';
 import type { Contract, Report } from './types.js';
+import type { CaptureSession } from './browser.js';
 
 const HELP = `Upload Doctor ${VERSION}
 Diagnose S3/R2 uploads from local evidence. No account or cloud admin keys required.
@@ -28,13 +29,14 @@ Usage:
 
 Options:
   --json              Print structured JSON instead of terminal text
-  --out FILE          Write JSON to a NEW file (never overwrites; private permissions)
+  --out FILE          Write JSON to a NEW file (never overwrites; POSIX mode 0600)
   --strict            Exit 3 on unknown checks, unless detected failures cause exit 1
   --contract FILE     Read a version 1 upload contract
   --request upload-N  Select one upload during offline inspection
-  --storage-host HOST Select capture host; repeatable; cannot combine with --contract
+  --storage-host HOST Select hostname across all ports; repeatable; no --contract
   --duration SECONDS  Capture duration (1–600; default 30); Ctrl-C finishes early
   --headless          Run Chromium without a visible window
+  --insecure-no-sandbox Disable Chromium's sandbox explicitly (trusted fixtures only)
   --help              Show this help
   --version           Print version
 
@@ -42,6 +44,10 @@ Capture uses optional Playwright and Chromium. It observes the normal applicatio
 flow. It does not replay requests, configure buckets, or assert app success itself.
 Local reports contain origin/endpoint metadata. Use share before posting reports.
 HAR inspection performs no network requests. Input limit: 32 MiB.
+Capture enables Chromium's sandbox by default. After "Capture started", SIGINT,
+SIGTERM and SIGHUP finish the report; interruption during startup exits with code 2.
+Windows uses directory ACLs; POSIX mode 0600 and input symlink rejection are not
+portable guarantees. Use trusted input paths and a private output directory.
 
 Exit codes: 0 no detected failures / verified comparison; 1 detected failure;
 2 invocation, input, I/O or browser error; 3 incomplete or inconclusive evidence.
@@ -57,15 +63,35 @@ const flagNames = [
   'storage-host',
   'duration',
   'headless',
+  'insecure-no-sandbox',
   'help',
   'version',
 ] as const;
 const allowed: Record<string, readonly string[]> = {
   inspect: ['json', 'out', 'strict', 'contract', 'request'],
-  capture: ['json', 'out', 'strict', 'contract', 'storage-host', 'duration', 'headless'],
+  capture: [
+    'json',
+    'out',
+    'strict',
+    'contract',
+    'storage-host',
+    'duration',
+    'headless',
+    'insecure-no-sandbox',
+  ],
   compare: ['json', 'out'],
   share: ['json', 'out'],
 };
+async function writeStdout(text: string): Promise<void> {
+  await new Promise<void>((resolve, reject) => {
+    process.stdout.write(text, (error) => {
+      // A consumer may intentionally stop reading. Finish owned browser cleanup
+      // and retain the diagnostic exit status instead of exiting inside an event.
+      if (!error || (error as NodeJS.ErrnoException).code === 'EPIPE') resolve();
+      else reject(error);
+    });
+  });
+}
 async function print(
   value: unknown,
   json: boolean,
@@ -73,7 +99,7 @@ async function print(
   text: string,
 ): Promise<void> {
   if (output) await writeJsonFile(output, value);
-  process.stdout.write(json ? `${JSON.stringify(value, null, 2)}\n` : text);
+  await writeStdout(json ? `${JSON.stringify(value, null, 2)}\n` : text);
 }
 
 export async function main(args: string[]): Promise<number> {
@@ -92,6 +118,7 @@ export async function main(args: string[]): Promise<number> {
         'storage-host': { type: 'string', multiple: true },
         duration: { type: 'string' },
         headless: { type: 'boolean' },
+        'insecure-no-sandbox': { type: 'boolean' },
         help: { type: 'boolean' },
         version: { type: 'boolean' },
       },
@@ -101,15 +128,15 @@ export async function main(args: string[]): Promise<number> {
   }
   const { values, positionals } = parsed;
   if (values.help) {
-    process.stdout.write(HELP);
+    await writeStdout(HELP);
     return 0;
   }
   if (values.version) {
-    process.stdout.write(`${VERSION}\n`);
+    await writeStdout(`${VERSION}\n`);
     return 0;
   }
   if (!positionals.length && !Object.keys(values).length) {
-    process.stdout.write(HELP);
+    await writeStdout(HELP);
     return 0;
   }
   const [command, first, second] = positionals;
@@ -171,17 +198,23 @@ export async function main(args: string[]): Promise<number> {
         'Browser capture requires Playwright. Install playwright and run playwright install chromium.',
       );
     }
-    const session = await browserModule.startCapture({
-      url: first,
-      ...(contract ? { contract } : {}),
-      headless: values.headless ?? false,
-      timeoutMs: Math.min(Number(duration) * 1000 + 30000, 660000),
-    });
     const controller = new AbortController();
     const stop = (): void => controller.abort();
-    process.once('SIGINT', stop);
-    process.once('SIGTERM', stop);
+    const signals = ['SIGINT', 'SIGTERM', 'SIGHUP'] as const;
+    // Keep ownership through report writes and cleanup, including repeated signals.
+    for (const signal of signals) process.on(signal, stop);
+    let session: CaptureSession | undefined;
     try {
+      if (values['insecure-no-sandbox'])
+        process.stderr.write('WARNING: Chromium sandbox disabled by explicit request.\n');
+      session = await browserModule.startCapture({
+        url: first,
+        ...(contract ? { contract } : {}),
+        headless: values.headless ?? false,
+        insecureNoSandbox: values['insecure-no-sandbox'] ?? false,
+        signal: controller.signal,
+        timeoutMs: Math.min(Number(duration) * 1000 + 30000, 660000),
+      });
       if (!values.json)
         process.stderr.write(
           'Capture started. Perform your upload in Chromium; Ctrl-C finishes early.\n',
@@ -192,10 +225,14 @@ export async function main(args: string[]): Promise<number> {
         },
       );
       report = createReport(await session.finish(), contract);
+      await print(report, values.json ?? false, values.out, formatReport(report));
+      return reportExitCode(report, values.strict ?? false);
     } finally {
-      process.removeListener('SIGINT', stop);
-      process.removeListener('SIGTERM', stop);
-      await session.close();
+      try {
+        await session?.close();
+      } finally {
+        for (const signal of signals) process.removeListener(signal, stop);
+      }
     }
   }
   await print(report, values.json ?? false, values.out, formatReport(report));
@@ -207,10 +244,12 @@ if (
   process.argv[1] &&
   import.meta.url === pathToFileURL(realpathSync(resolve(process.argv[1]))).href
 ) {
-  process.stdout.on('error', (error) => {
-    if ((error as NodeJS.ErrnoException).code === 'EPIPE') process.exit(0);
-    throw error;
-  });
+  // Write callbacks handle errors and unwind main's finally blocks. An error
+  // listener is also required because Writable emits the same error as an event.
+  process.stdout.on('error', () => undefined);
+  // Success is assigned only after main settles. An unresolved third-party
+  // promise must not turn an otherwise empty event loop into a successful run.
+  process.exitCode = 2;
   main(process.argv.slice(2))
     .then((code) => {
       process.exitCode = code;

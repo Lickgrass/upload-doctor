@@ -63,6 +63,13 @@ Upload Doctor observes them. It does not generate cloud credentials, change
 bucket configuration or replay a PUT on your behalf. The browser session starts
 without your usual profile, cookies or extensions.
 
+Chromium's sandbox is enabled explicitly. Capture fails if the platform cannot
+support it; there is no automatic fallback. `--insecure-no-sandbox` is an
+explicit exception for a trusted isolated environment, not a normal setup step.
+See [browser privacy and launch policy](docs/privacy.md#browser-sessions).
+Once capture starts, Ctrl-C finalizes and saves the report before closing the
+browser. Interrupting startup exits with code 2.
+
 Observation is limited to selected storage requests and their preflights. It does
 not capture the application's signing endpoint response or inspect server-side
 signer code. Supply signer expectations in a contract when needed. A failure
@@ -115,6 +122,10 @@ bucket, or `"pathStyle": false` if the host identifies the destination. Without
 that declaration the tool does not guess the destination, and comparison remains
 unknown. `--storage-host` alone selects traffic; it cannot declare custom-host
 bucket addressing. Use `--contract` instead for this case.
+
+Host selection compares hostnames, not ports: `localhost` selects matching
+traffic on every local port. This is an observation filter, not a network access
+control. Reports retain the full origin, including port, for comparison.
 
 ## Commands
 

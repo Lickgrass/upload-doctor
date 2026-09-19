@@ -116,3 +116,53 @@ The maintained regressions are in `tests/security-*.test.mjs` and
 and the advisory check before releasing. See [verification](verification.md)
 for the final local and hosted test evidence, and [release](release.md) for the
 publishing procedure.
+
+## Follow-up review after PR #2
+
+A user-supplied review identified gaps missed by the initial audit. The follow-up
+started from merged commit `4833796fa6ad44c89d4a025edd1de8e5d55276e5` and reproduced
+the browser launch and signal behavior rather than relying on launch defaults.
+
+| Item                                         | Verified evidence and repair                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| -------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Medium: Chromium sandbox disabled by default | Actual process arguments contained `--no-sandbox`. Owned capture and the live harness now explicitly enable the sandbox, fail closed on unsupported platforms, and disable it only through a named insecure opt-out. Running-process tests confirm both policies. This adds browser containment; it does not make an untrusted application safe to browse.                                                                                                                                                                                                                  |
+| Reliability: signals lost evidence           | Baseline SIGINT exited 130; SIGTERM lost completion evidence; SIGHUP failed to finish before the bounded test deadline. Playwright's competing signal handlers are now disabled. The CLI owns shutdown through finalization, output and cleanup. Actual subprocess tests send all three signals and confirm the requested report survives. Startup cancellation returns code 2. Queued completion events may still remain unknown.                                                                                                                                          |
+| Release privilege separation                 | The earlier publish job installed development dependencies and rebuilt while it could mint an OIDC token. Validation now builds and retains the exact package it tests without OIDC. The publishing job downloads that archive by immutable artifact ID, checks source/run identity and SHA-256, then publishes with scripts disabled. It performs no checkout, install, build or repack. The pinned actions, Node/npm and GitHub infrastructure remain trusted components. A compromised build can still produce a malicious artifact; hashing is not a code-safety proof. |
+| Low: stale local archive                     | The ignored root archive contained the earlier vulnerable hostname expression and lacked the browser debug guard. Its hash and contents were recorded privately, then that exact file was deleted. Package verification uses temporary directories and retains a candidate only in an explicitly requested new directory.                                                                                                                                                                                                                                                   |
+| Package inventory                            | The earlier script checked required files and denied several sensitive path patterns; `package.json` supplied the broad directory allowlist. A separate reviewed manifest now requires the exact 35-file package set. Archive structure and bytes must match the built checkout before package execution; installed bytes and the retained archive are checked again.                                                                                                                                                                                                       |
+| Output-pipe cleanup                          | Cross-review of the shutdown repair found that a direct EPIPE exit could interrupt browser cleanup. Stdout now uses awaited write callbacks and preserves diagnostic status; an actual Chromium test closes the output pipe and verifies both saved output and completed browser closure.                                                                                                                                                                                                                                                                                   |
+
+The sandbox default is explicitly documented by
+[Playwright's launch API](https://playwright.dev/docs/api/class-browsertype#browser-type-launch-option-chromium-sandbox).
+The locked Playwright version was also checked directly: its automation flags
+include basic password storage, a mock keychain and disabled HTTPS upgrades.
+These remaining differences, caller-owned browser policy and update obligations
+are documented in [privacy](privacy.md#browser-sessions). No claim that the
+bundled browser matches the current stable Chrome patch level is made.
+
+The CLI help now explains Windows ACL/symlink limits and hostname selection
+across all ports. Broad S3 hostname recognition, including website-style names,
+selects observations only; it does not establish endpoint compatibility or
+authorize network access. The formatter's remaining invisible Unicode characters
+are a display limitation for imported library narratives, not a raw-input CLI
+execution path.
+
+Repeated startup-abort tests also exposed a DevTools cleanup race: 12 of 25
+baseline runs exited before an unresolved detach promise settled. Detachment now
+finishes on page closure or a referenced, bounded deadline. All 25 repeated runs
+then returned the fixed startup-interruption error, and a deterministic stalled
+detach test covers the deadline. The CLI initializes its exit status to failure
+until the operation settles, so an unexpectedly empty event loop cannot imply
+success.
+
+Package subprocesses now pass arguments directly rather than invoking
+`npm.cmd` through a shell on Windows. A package regression uses spaces and `&`
+in its checkout, temporary directory and archive paths, including direct
+invocation without npm's environment hint. Hosted Windows CI verifies the actual
+Windows path; no capture-to-shell exploit was asserted from a macOS-only test.
+
+Administrator bypass, solo-maintainer deployment approval and release-tag
+creation policy remain the disclosed governance limits. They were not silently
+changed or represented as independent human review. Actions SHA pinning remains
+required; the allowlist now also includes the pinned upload/download artifact
+actions. Live cloud behavior and real npm trusted publishing remain untested.

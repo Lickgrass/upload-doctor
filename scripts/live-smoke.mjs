@@ -38,6 +38,7 @@ function configuration() {
     provider === 'r2' ? (env.UPLOAD_DOCTOR_LIVE_REGION ?? 'auto') : env.UPLOAD_DOCTOR_LIVE_REGION;
   const portText = env.UPLOAD_DOCTOR_LIVE_PORT ?? '43189';
   const endpointText = env.UPLOAD_DOCTOR_LIVE_ENDPOINT;
+  const insecureSandboxText = env.UPLOAD_DOCTOR_LIVE_INSECURE_NO_SANDBOX;
   const safeCredential = (value) =>
     typeof value === 'string' &&
     value.length > 0 &&
@@ -45,6 +46,7 @@ function configuration() {
     !/[\u0000-\u0020\u007f]/.test(value);
   if (
     !['s3', 'r2'].includes(provider) ||
+    (insecureSandboxText !== undefined && !['0', '1'].includes(insecureSandboxText)) ||
     typeof bucket !== 'string' ||
     !/^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$/.test(bucket) ||
     !safeCredential(accessKeyId) ||
@@ -89,6 +91,7 @@ function configuration() {
     region,
     port: Number(portText),
     endpoint: endpoint?.origin,
+    insecureNoSandbox: insecureSandboxText === '1',
     credentials: {
       accessKeyId,
       secretAccessKey,
@@ -131,8 +134,9 @@ async function run(config) {
     abort.abort();
     if (browser) void browser.close().catch(() => undefined);
   };
-  process.once('SIGINT', onSignal);
-  process.once('SIGTERM', onSignal);
+  process.on('SIGINT', onSignal);
+  process.on('SIGTERM', onSignal);
+  process.on('SIGHUP', onSignal);
 
   try {
     const [
@@ -148,6 +152,7 @@ async function run(config) {
       import('../dist/browser.js'),
       import('../dist/report.js'),
     ]);
+    if (interrupted) throw new Error('Interrupted');
     sdk = sdkModule;
     client = new sdk.S3Client({
       region: config.region,
@@ -200,7 +205,20 @@ async function run(config) {
       app.listen(config.port, '127.0.0.1', resolve);
     });
     stage = 'starting Chromium';
-    browser = await chromium.launch({ headless: true });
+    if (interrupted) throw new Error('Interrupted');
+    if (config.insecureNoSandbox)
+      process.stderr.write(
+        'WARNING: Chromium sandbox explicitly disabled for this live test. Use only in a trusted isolated environment.\n',
+      );
+    browser = await chromium.launch({
+      headless: true,
+      chromiumSandbox: !config.insecureNoSandbox,
+      handleSIGINT: false,
+      handleSIGTERM: false,
+      handleSIGHUP: false,
+      timeout: 30_000,
+    });
+    if (interrupted) throw new Error('Interrupted');
 
     async function signedPut(key) {
       if (interrupted) throw new Error('Interrupted');
@@ -419,6 +437,7 @@ async function run(config) {
     }
     process.removeListener('SIGINT', onSignal);
     process.removeListener('SIGTERM', onSignal);
+    process.removeListener('SIGHUP', onSignal);
   }
   if (cleanupFailed)
     process.stderr.write(

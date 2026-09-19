@@ -97,6 +97,8 @@ export interface CaptureCollector {
 export interface StartCaptureOptions extends CaptureOptions {
   url: string;
   headless?: boolean;
+  /** Explicitly disable Chromium's sandbox in a trusted isolated environment. Defaults to false. */
+  insecureNoSandbox?: boolean;
 }
 
 export interface CaptureSession extends CaptureCollector {
@@ -522,10 +524,34 @@ export async function attachCapture(
           ]);
         } finally {
           if (waitTimer) clearTimeout(waitTimer);
-          try {
-            await session.detach();
-          } catch {
-            /* The page may already have closed. */
+          // A concurrent browser close can strand Playwright's detach promise
+          // after its transport loses all live handles. Keep a bounded timer
+          // referenced so finalization still settles and the caller can report.
+          if (!page.isClosed()) {
+            let detachTimer: ReturnType<typeof setTimeout> | undefined;
+            let onPageClosed: () => void = () => undefined;
+            const pageClosed = new Promise<void>((resolve) => {
+              onPageClosed = resolve;
+              page.once('close', onPageClosed);
+              if (page.isClosed()) resolve();
+            });
+            try {
+              await Promise.race([
+                session.detach().catch(() => undefined),
+                pageClosed,
+                new Promise<void>((resolve) => {
+                  detachTimer = setTimeout(() => {
+                    limitations.add(
+                      'Chromium observer detachment did not finish before its deadline; the browser owner must close the session.',
+                    );
+                    resolve();
+                  }, 1_500);
+                }),
+              ]);
+            } finally {
+              if (detachTimer) clearTimeout(detachTimer);
+              page.off('close', onPageClosed);
+            }
           }
         }
         if (pending.size)
@@ -619,6 +645,15 @@ export async function attachCapture(
 export async function startCapture(options: StartCaptureOptions): Promise<CaptureSession> {
   // Check before importing Playwright, launching Chromium or visiting the target URL.
   requirePrivateCaptureEnvironment();
+  if (options.insecureNoSandbox !== undefined && typeof options.insecureNoSandbox !== 'boolean') {
+    throw new InputError('insecureNoSandbox must be an explicit boolean.');
+  }
+  const interrupted = (): InputError =>
+    new InputError('Capture was interrupted before observation started.');
+  const checkAbort = (): void => {
+    if (options.signal?.aborted) throw interrupted();
+  };
+  checkAbort();
   let target: URL;
   try {
     target = new URL(options.url);
@@ -628,19 +663,47 @@ export async function startCapture(options: StartCaptureOptions): Promise<Captur
   if (!['http:', 'https:'].includes(target.protocol) || target.username || target.password) {
     throw new Error('Capture requires an HTTP or HTTPS URL without embedded credentials.');
   }
-  let browser: Browser;
+  let browser: Browser | undefined;
+  let abortClose: Promise<void> | undefined;
+  const onStartupAbort = (): void => {
+    if (browser) abortClose ??= browser.close().catch(() => undefined);
+  };
+  options.signal?.addEventListener('abort', onStartupAbort, { once: true });
   try {
-    const { chromium } = await import('playwright');
-    browser = await chromium.launch({ headless: options.headless ?? false });
-  } catch {
-    throw new Error(
-      'Browser capture requires Playwright and its Chromium browser. Install playwright and run: npx playwright install chromium',
-    );
-  }
-  try {
+    checkAbort();
+    let chromium: (typeof import('playwright'))['chromium'];
+    try {
+      ({ chromium } = await import('playwright'));
+    } catch {
+      throw new InputError(
+        'Browser capture requires Playwright and its Chromium browser. Install playwright and run: npx playwright install chromium',
+      );
+    }
+    checkAbort();
+    try {
+      browser = await chromium.launch({
+        headless: options.headless ?? false,
+        chromiumSandbox: !options.insecureNoSandbox,
+        // The caller owns process signals and must finish capture before closing the browser.
+        handleSIGINT: false,
+        handleSIGTERM: false,
+        handleSIGHUP: false,
+        timeout: 30_000,
+      });
+    } catch {
+      throw new InputError(
+        options.insecureNoSandbox
+          ? 'Chromium could not start. Check the Playwright browser installation and operating-system support.'
+          : 'Chromium could not start with its sandbox enabled. Check the browser installation and operating-system sandbox support. Only in a trusted isolated environment, explicitly use --insecure-no-sandbox or insecureNoSandbox: true to disable it; capture never retries without the sandbox.',
+      );
+    }
+    checkAbort();
     const context = await browser.newContext({ acceptDownloads: false });
+    checkAbort();
     const page = await context.newPage();
+    checkAbort();
     const collector = await attachCapture(page, options);
+    checkAbort();
     try {
       await page.goto(target.href, { waitUntil: 'domcontentloaded', timeout: 30_000 });
     } catch {
@@ -649,22 +712,29 @@ export async function startCapture(options: StartCaptureOptions): Promise<Captur
         'The application page could not be opened. Check its address and connectivity.',
       );
     }
-    let closed = false;
+    checkAbort();
+    const ownedBrowser = browser;
+    let closing: Promise<void> | undefined;
     return {
       page,
       ...collector,
-      async close() {
-        if (closed) return;
-        closed = true;
-        try {
-          await collector.finish();
-        } finally {
-          await browser.close();
-        }
+      close() {
+        closing ??= (async () => {
+          try {
+            await collector.finish();
+          } finally {
+            await ownedBrowser.close();
+          }
+        })();
+        return closing;
       },
     };
   } catch (error) {
-    await browser.close();
+    if (abortClose) await abortClose;
+    else await browser?.close().catch(() => undefined);
+    if (options.signal?.aborted) throw interrupted();
     throw error;
+  } finally {
+    options.signal?.removeEventListener('abort', onStartupAbort);
   }
 }

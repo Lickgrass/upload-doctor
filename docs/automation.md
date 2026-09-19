@@ -57,6 +57,15 @@ than manufacturing completion.
 
 ## Reports and exit status
 
+When creating a browser for `attachCapture`, explicitly pass
+`chromiumSandbox: true` to `chromium.launch`. The collector cannot enable it
+after launch. If your runner owns graceful shutdown, also pass
+`handleSIGINT: false`, `handleSIGTERM: false` and `handleSIGHUP: false`, then
+finalize the collector and close the browser in your own shutdown path.
+`startCapture` applies that launch policy for its owned browser; its caller must
+still close the returned session. See [browser policy](privacy.md#browser-sessions)
+for the explicit sandbox exception and remaining automation-browser differences.
+
 Use `--json --out <path>` when collecting a local report. Run the CLI with
 `--strict` when incomplete or unsupported coverage should prevent a passing CI
 step. Preserve the command's exit status; a report existing on disk does not mean

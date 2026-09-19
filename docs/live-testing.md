@@ -6,6 +6,13 @@ This test must be run separately for S3 and R2. A successful local fixture test 
 
 ## Prepare a dedicated bucket
 
+The harness explicitly enables Chromium's sandbox and fails if the platform
+cannot support it. Only for a trusted isolated environment, set
+`UPLOAD_DOCTOR_LIVE_INSECURE_NO_SANDBOX=1` to opt out; unset or `0` preserves the
+sandbox, and other values are rejected. The exception prints a fixed warning.
+SIGINT, SIGTERM and SIGHUP enter the harness's cleanup path; Playwright does not
+install competing signal handlers. Forced termination can still prevent cleanup.
+
 Use a disposable **unversioned** test bucket. Grant the test identity object-scoped `PutObject`, `GetObject` and `DeleteObject` permissions only for the `upload-doctor/*` prefix. No bucket listing or administrative permissions are required by the harness. The equivalent R2 token needs object read and write access to the selected test bucket; use the narrowest scope available.
 
 Do not use a production bucket. Each run creates a random `upload-doctor/<uuid>/` prefix and uses separate keys for the intentional failure and corrected upload. Cleanup attempts every key that may have been written, including after a failure or normal interruption. A failed cleanup makes the test fail and prints only its generated run prefix for manual cleanup.

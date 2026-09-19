@@ -2,6 +2,11 @@
 
 ## 0.1.0 — Unreleased
 
+- Follow-up hardening enables Chromium's sandbox by default, adds explicit opt-outs,
+  preserves CLI reports and browser cleanup across signals and closed output pipes,
+  publishes only the tested archive from a separate job, and verifies an exact
+  package file manifest. A stale local archive was removed before publication.
+
 - Local HAR inspection for application uploads to AWS S3 and Cloudflare R2.
 - Evidence-based findings with separate status, confidence and coverage limits.
 - Optional Chromium capture and before/after report comparison.

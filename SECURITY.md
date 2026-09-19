@@ -20,6 +20,13 @@ promised.
   separate browser session. That page and its uploader can contact services and
   write objects as they normally would. Capture is not a sandbox for an
   untrusted application. Use a patched runtime and browser.
+- Owned browser capture explicitly enables Chromium's sandbox and never retries
+  without it. `--insecure-no-sandbox` (library: `insecureNoSandbox: true`) is an
+  explicit exception for trusted isolated environments that cannot support the
+  sandbox; it removes an important browser containment layer. Do not use that
+  exception for ordinary browsing or untrusted applications. `attachCapture`
+  cannot change a browser's existing launch policy: its caller must launch with
+  `chromiumSandbox: true` and own process shutdown.
 - Start capture in a fresh process with `DEBUG`, `NODE_DEBUG` and `PWDEBUG`
   unset. Capture rejects these diagnostic environments because upstream logs
   can contain complete signed URLs, authorization headers and file bytes.

@@ -114,7 +114,7 @@ try {
   console.log(
     'Synthetic test double: no AWS/R2 requests, real signatures, cloud credentials, or report files.\n',
   );
-  browser = await chromium.launch({ headless: true });
+  browser = await chromium.launch({ headless: true, chromiumSandbox: true });
 
   async function run(contentType) {
     const context = await browser.newContext();
