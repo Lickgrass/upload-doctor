@@ -29,13 +29,25 @@ not an enterprise certification, service-level commitment, or security guarantee
 
 ## Remaining release evidence
 
-- Hosted CI across Linux, Windows and macOS: pending the initial repository run.
+- Hosted CI across Linux, Windows and macOS: consult the
+  [CI runs for the candidate commit](https://github.com/Lickgrass/upload-doctor/actions/workflows/ci.yml).
+  The workflow checks the minimum Node version, current 22/24/26 releases, installed
+  package behavior, Chromium fixtures on Linux and dependency advisories. Its result
+  is separate from the local checks above.
 - Live AWS S3 and Cloudflare R2 integration: **not run**. No disposable provider
   targets were configured for this implementation session. Follow
   [live testing](live-testing.md) and record each provider's results separately.
 - npm publication and provenance: **not performed**. The manual publishing workflow
   remains gated until live-provider verification and publisher configuration are complete.
 - Independent user pilots and third-party security audit: not performed or implied.
+
+## Repository controls
+
+The public repository has secret scanning, push protection, dependency security
+updates and private vulnerability reporting enabled. An `npm` deployment environment
+requires maintainer approval and permits only `v*` tags. `ENABLE_NPM_PUBLISH` remains
+unset, so pushing code cannot publish a package. npm publisher registration is still
+required before a package release.
 
 Reports are unsigned local observations. A user can edit JSON or supply false
 assertions; the comparison engine checks consistency, not provenance or authenticity.
